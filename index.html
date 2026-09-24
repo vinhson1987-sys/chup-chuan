@@ -331,7 +331,7 @@
     wantBody: false,
     pose: 0,                 // index into POSES, 0 = none
     hasMotion: false,
-    roll: 0, elev: 0, gx: 0, gy: 0, gz: -1,
+    roll: 0, elev: 0, gx: 0, gy: 0, gz: -1, landscape: false,
     faceDet: null, poseDet: null, detBusy: false,
     subject: null,           // {x0,y0,x1,y1, cx, cy, w, h} normalized in frame coords
     joints: null,            // pose landmarks normalized
@@ -411,6 +411,7 @@
     // elevation of the back camera axis: -90 = pointing straight down, 0 = horizon, +90 = up
     const elev = Math.asin(clamp(S.gz, -1, 1)) * DEG;
     S.roll = roll; S.elev = elev;
+    S.landscape = (Math.abs(Math.round(rollRaw / 90)) % 2) === 1;
   }
 
   async function enableMotion() {
@@ -499,6 +500,8 @@
           const h = (y1 - y0) * 1.9, w = (x1 - x0) * 1.25;
           const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 - h * 0.05;
           subject = mkBox(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
+          subject.eyeY = (lm[2].y + lm[5].y) / 2;
+          subject.yaw = (lm[0].x - (lm[2].x + lm[5].x) / 2) / Math.max(0.01, Math.abs(lm[2].x - lm[5].x));
         }
       } else if (needSubject && S.faceDet) {
         const res = S.faceDet.detectForVideo(video, now);
@@ -511,6 +514,12 @@
             x1 = Math.max(x1, (b.originX + b.width) / video.videoWidth); y1 = Math.max(y1, (b.originY + b.height) / video.videoHeight);
           }
           subject = mkBox(x0, y0, x1, y1);
+          const big = dets.reduce((a, b) => (b.boundingBox.width > a.boundingBox.width ? b : a));
+          const kp = big.keypoints || [];
+          if (kp.length >= 3) {
+            subject.eyeY = (kp[0].y + kp[1].y) / 2;
+            subject.yaw = (kp[2].x - (kp[0].x + kp[1].x) / 2) / Math.max(0.01, Math.abs(kp[0].x - kp[1].x));
+          }
         }
       }
       S.subject = subject; S.joints = joints;
@@ -543,23 +552,30 @@
   }
 
   // ---------------- Rules ----------------
-  // Returns {checks, hints[]} where hints are ordered by priority.
+  // Every threshold below follows a documented composition guideline; see README "Chuẩn áp dụng".
+  // Returns {C: check states, hints[]} where hints are ordered by priority.
   function evaluate() {
     const hints = [];
     const C = { level: 'none', pitch: 'none', subject: 'none', light: 'none' };
     const mode = S.mode;
     const roll = S.roll, elev = S.elev;
     const absR = Math.abs(roll);
+    const s = S.subject;
     const fullBody = !!(S.joints && [27, 28].some(i => S.joints[i].visibility > 0.5 && S.joints[i].y < 1.02));
+    // Shot size from face width: headshot / half body / full body (drives the camera-height rule)
+    const shot = fullBody ? 'full' : (s && s.w > 0.30 ? 'head' : 'half');
+    const mir = S.facing === 'user';
+    // "move the frame left" in video coords; flipped for the mirrored front camera
+    const LEFT = mir ? 'phải' : 'trái', RIGHT = mir ? 'trái' : 'phải';
 
-    // ---- Level ----
+    // ---- Level (horizon straight) ----
     if (S.hasMotion) {
       if (mode === 'food' && elev <= -80) {
         const flat = Math.abs(S.gx) < 0.07 && Math.abs(S.gy) < 0.07;
         C.level = flat ? 'pass' : 'fail';
-        if (!flat) hints.push({ k: 'level', main: 'Giữ máy song song mặt bàn', sub: 'Đưa chấm tròn vào giữa vòng tròn' });
+        if (!flat) hints.push({ k: 'level', main: 'Giữ máy song song mặt bàn', sub: 'Đưa chấm tròn vào giữa vòng tròn (thước thủy)' });
       } else {
-        const tol = mode === 'scene' ? 1.0 : 1.8;
+        const tol = mode === 'scene' ? 1.0 : 2.0;
         C.level = absR <= tol ? 'pass' : 'fail';
         if (absR > tol) {
           const side = roll > 0 ? 'phải' : 'trái';
@@ -568,40 +584,53 @@
       }
     }
 
-    // ---- Pitch / camera angle ----
+    // ---- Camera height / tilt ----
     if (S.hasMotion) {
-      let lo, hi, low, high;
       if (mode === 'person') {
-        if (fullBody) { lo = -3; hi = 9; }
-        else { lo = -9; hi = 9; }
-        low = fullBody ? 'Hạ máy xuống ngang eo, hơi ngẩng lên' : 'Máy đang chúc xuống, hạ máy thấp hơn';
-        high = 'Máy đang ngẩng lên, giữ máy thẳng đứng';
-        const sub = fullBody ? 'Chụp từ thấp, máy thẳng: chân dài hơn thật' : 'Máy thẳng đứng thì người không bị lùn, méo';
+        // Camera height by shot size: headshot slightly above eye level, half body at chest level,
+        // full body at waist level with the camera held level (no downward tilt = no short legs).
+        let lo, hi, low, high, sub;
+        if (shot === 'full') { lo = -3; hi = 8; low = 'Hạ máy xuống ngang eo, giữ máy thẳng'; high = 'Máy ngẩng lên quá, giữ máy thẳng'; sub = 'Chuẩn cả người: máy ngang eo, không chúc xuống thì chân không bị ngắn'; }
+        else if (shot === 'head') { lo = -14; hi = 0; low = 'Máy chúc xuống quá, nâng máy lên'; high = 'Nâng máy cao hơn mắt một chút, hướng xuống nhẹ'; sub = 'Chuẩn cận mặt: máy hơi cao hơn tầm mắt'; }
+        else { lo = -7; hi = 4; low = 'Máy chúc xuống, nâng máy lên ngang ngực'; high = 'Máy ngẩng lên, hạ máy xuống ngang ngực'; sub = 'Chuẩn nửa người: máy ngang ngực, giữ thẳng'; }
         C.pitch = (elev >= lo && elev <= hi) ? 'pass' : 'fail';
         if (C.pitch === 'fail') hints.push({ k: 'pitch', main: elev < lo ? low : high, sub });
       } else if (mode === 'selfie') {
+        // Front camera 10–20° above eye level, angled down
         const ef = -elev; // front camera looks along +z
-        lo = -26; hi = -4;
+        const lo = -25, hi = -5;
         C.pitch = (ef >= lo && ef <= hi) ? 'pass' : 'fail';
-        if (C.pitch === 'fail') hints.push({ k: 'pitch', main: ef > hi ? 'Nâng máy cao hơn mắt, hướng xuống mặt' : 'Máy cao quá, hạ xuống một chút', sub: 'Góc từ trên xuống nhẹ: mắt to, mặt thon' });
+        if (C.pitch === 'fail') hints.push({ k: 'pitch', main: ef > hi ? 'Nâng máy cao hơn mắt, hướng xuống mặt' : 'Máy cao quá, hạ xuống một chút', sub: 'Chuẩn selfie: máy cao hơn mắt 10–20°, hơi chúc xuống' });
       } else if (mode === 'scene') {
-        lo = -14; hi = 14;
-        C.pitch = (elev >= lo && elev <= hi) ? 'pass' : 'fail';
-        if (C.pitch === 'fail') hints.push({ k: 'pitch', main: elev < lo ? 'Đừng chúc máy xuống, giữ máy thẳng' : 'Đừng ngẩng máy, giữ máy thẳng', sub: 'Máy thẳng thì nhà cửa, cây cối không bị đổ' });
+        // Horizon on a third line: with the iPhone 1x lens that is a ±13° tilt held upright, ±10° held sideways
+        const t = S.landscape ? 9.6 : 13.1;
+        const dUp = Math.abs(elev - t), dDown = Math.abs(elev + t);
+        C.pitch = Math.min(dUp, dDown) <= 4 ? 'pass' : 'fail';
+        if (C.pitch === 'fail') {
+          if (Math.abs(elev) < 4) hints.push({ k: 'pitch', main: `Chân trời đang ở giữa khung: chúc hoặc ngẩng máy ${t.toFixed(0)}°`, sub: 'Chuẩn 1/3: chân trời trùng vạch ngang trên (nhiều đất) hoặc dưới (nhiều trời)' });
+          else if (Math.abs(elev) > 30) hints.push({ k: 'pitch', main: elev < 0 ? 'Chúc máy nhiều quá, ngẩng lên' : 'Ngẩng máy nhiều quá, hạ xuống', sub: 'Nghiêng mạnh làm nhà cửa, cây cối bị đổ' });
+          else {
+            const target = elev > 0 ? t : -t;
+            const diff = target - elev;
+            hints.push({ k: 'pitch', main: `${diff > 0 ? 'Ngẩng' : 'Chúc'} máy thêm ${Math.abs(diff).toFixed(0)}°`, sub: 'Đưa vạch xanh (chân trời) trùng vạch ngang 1/3' });
+          }
+        }
       } else if (mode === 'food') {
-        const flat = elev <= -84, angle = elev >= -52 && elev <= -36;
-        C.pitch = (flat || angle) ? 'pass' : 'fail';
-        if (!C.pitch || C.pitch === 'fail') {
-          if (elev > -30) hints.push({ k: 'pitch', main: 'Hướng máy xuống bàn ăn', sub: 'Chụp từ trên xuống (90°) hoặc nghiêng 45°' });
-          else if (elev < -60) hints.push({ k: 'pitch', main: 'Giữ máy nằm ngang hẳn (90°)', sub: `Còn ${Math.abs(-90 - elev).toFixed(0)}° nữa` });
-          else hints.push({ k: 'pitch', main: elev > -36 ? 'Nghiêng máy xuống thêm, tới 45°' : 'Ngẩng máy lên một chút, tới 45°', sub: 'Góc 45°: thấy cả mặt và chiều cao món ăn' });
+        // Three standard food angles: overhead 90°, three-quarter 45°, straight-on 0°
+        const flat = elev <= -84, angle = Math.abs(elev + 45) <= 7, front = Math.abs(elev) <= 5;
+        C.pitch = (flat || angle || front) ? 'pass' : 'fail';
+        if (C.pitch === 'fail') {
+          const targets = [-90, -45, 0];
+          const tg = targets.reduce((a, b) => Math.abs(b - elev) < Math.abs(a - elev) ? b : a);
+          if (tg === -90) hints.push({ k: 'pitch', main: 'Giữ máy nằm ngang hẳn (90°)', sub: 'Chụp từ trên xuống: pizza, salad, bàn nhiều món' });
+          else if (tg === -45) hints.push({ k: 'pitch', main: elev > -45 ? `Chúc máy xuống thêm ${(elev + 45).toFixed(0)}° tới 45°` : `Ngẩng máy lên ${(-45 - elev).toFixed(0)}° tới 45°`, sub: 'Góc 45°: góc chụp món ăn phổ biến nhất, thấy cả mặt và chiều cao' });
+          else hints.push({ k: 'pitch', main: 'Hạ máy ngang tầm món ăn (0°)', sub: 'Chụp ngang: burger, bánh nhiều tầng, ly nước' });
         }
       }
     }
 
     // ---- Subject / composition ----
     if (mode === 'person' || mode === 'selfie') {
-      const s = S.subject;
       if (!S.faceDet && !S.poseDet) {
         C.subject = 'none';
       } else if (!s) {
@@ -609,19 +638,30 @@
         hints.push({ k: 'subject', main: 'Đưa người vào khung hình', sub: 'Chưa thấy khuôn mặt' });
       } else {
         const probs = [];
-        const minW = mode === 'selfie' ? 0.16 : (fullBody ? 0.05 : 0.08);
-        const maxW = mode === 'selfie' ? 0.55 : 0.42;
-        if (s.w < minW) probs.push({ main: 'Tiến lại gần hơn', sub: 'Người đang quá nhỏ trong khung' });
-        else if (s.w > maxW) probs.push({ main: 'Lùi ra xa một chút', sub: 'Mặt chiếm quá nhiều khung' });
-        if (s.y0 < 0.035) probs.push({ main: 'Đầu chạm mép trên, hạ khung xuống', sub: 'Chừa khoảng trống trên đầu' });
-        else if (s.y0 > (fullBody ? 0.20 : 0.30)) probs.push({ main: 'Thừa khoảng trống trên đầu', sub: 'Hạ máy thấp xuống, đừng chúc máy' });
-        if (s.cx < 0.24) probs.push({ main: 'Dịch khung sang trái', sub: 'Người đang sát mép' });
-        else if (s.cx > 0.76) probs.push({ main: 'Dịch khung sang phải', sub: 'Người đang sát mép' });
+        // Distance: too close to a wide lens distorts the face; too far loses the subject
+        if (s.w > 0.45) probs.push({ main: 'Lùi ra xa, bật 2x nếu có', sub: 'Gần quá, ống kính rộng làm méo mũi và mặt' });
+        else if (!fullBody && s.w < (mode === 'selfie' ? 0.14 : 0.07)) probs.push({ main: 'Tiến lại gần hơn', sub: 'Mặt quá nhỏ trong khung' });
+        // Head and chin: never crop the chin; only extreme close-ups may crop the top of the head
+        if (s.y0 < 0.015 && s.w < 0.45) probs.push({ main: 'Đầu bị cắt, hạ khung xuống', sub: 'Chỉ ảnh cận mặt mới được cắt đỉnh đầu' });
+        if (s.y1 > 0.985) probs.push({ main: 'Đừng cắt ở cằm', sub: 'Cằm phải nằm trọn trong khung' });
+        // Eyes on the upper third line (headshot / half body); head inside the top third (full body)
+        const eyeY = s.eyeY != null ? s.eyeY : (s.y0 + s.h * 0.4);
+        if (shot !== 'full') {
+          if (eyeY < 0.24) probs.push({ main: 'Mắt quá cao, nâng máy lên một chút', sub: 'Chuẩn: mắt nằm trên vạch ngang 1/3 phía trên' });
+          else if (eyeY > 0.45) probs.push({ main: 'Thừa khoảng trống trên đầu, hạ máy xuống', sub: 'Chuẩn: mắt nằm trên vạch ngang 1/3 phía trên' });
+        } else if (s.y0 > 0.22) probs.push({ main: 'Thừa khoảng trống trên đầu, hạ khung xuống', sub: 'Đầu nằm trong 1/3 trên của khung' });
+        // Horizontal placement and lead room (space in the direction the face looks)
+        const yaw = s.yaw || 0; // + = nose turned toward frame right (video coords)
+        if (s.cx < 0.22) probs.push({ main: `Dịch khung sang ${LEFT}`, sub: 'Người đang sát mép' });
+        else if (s.cx > 0.78) probs.push({ main: `Dịch khung sang ${RIGHT}`, sub: 'Người đang sát mép' });
+        else if (yaw > 0.3 && s.cx > 0.55) probs.push({ main: `Dịch khung sang ${RIGHT}, chừa chỗ phía mặt nhìn`, sub: 'Lead room: khoảng trống nằm phía trước hướng nhìn' });
+        else if (yaw < -0.3 && s.cx < 0.45) probs.push({ main: `Dịch khung sang ${LEFT}, chừa chỗ phía mặt nhìn`, sub: 'Lead room: khoảng trống nằm phía trước hướng nhìn' });
+        // Never crop at a joint; leave room under the feet
         if (S.joints) {
           const J = S.joints;
           const cut = [[25, 'đầu gối'], [26, 'đầu gối'], [27, 'cổ chân'], [28, 'cổ chân'], [13, 'khuỷu tay'], [14, 'khuỷu tay'], [15, 'cổ tay'], [16, 'cổ tay']]
             .find(([i]) => J[i].visibility > 0.5 && ((J[i].y > 0.9 && J[i].y < 1.03) || J[i].x < 0.03 || J[i].x > 0.97));
-          if (cut) probs.push({ main: `Đừng cắt ở ${cut[1]}`, sub: 'Lùi lại hoặc chỉnh khung: cắt ở giữa đùi, giữa bắp tay thì đẹp' });
+          if (cut) probs.push({ main: `Đừng cắt ở ${cut[1]}`, sub: 'Cắt giữa đùi, dưới gối, ngang eo hoặc giữa cẳng tay thì đẹp' });
           if (fullBody) {
             const footY = Math.max(J[27].y, J[28].y, J[31].y, J[32].y);
             if (footY > 0.985) probs.push({ main: 'Chừa chỗ dưới bàn chân', sub: 'Chân sát mép dưới trông bị cụt' });
@@ -633,7 +673,7 @@
       }
     }
 
-    // ---- Light ----
+    // ---- Light (heuristic: no numeric standard exists; mirrors the iPhone "too dark" warning) ----
     if (S.lum) {
       const L = S.lum;
       let p = null;
@@ -789,6 +829,24 @@
         ctx.fillStyle = okP ? 'rgba(52,211,153,0.95)' : 'rgba(245,185,66,0.95)';
         ctx.beginPath(); ctx.moveTo(gx0 - 9 * dpr, cy - rel * gh / 2); ctx.lineTo(gx0 + 1 * dpr, cy - rel * gh / 2 - 6 * dpr); ctx.lineTo(gx0 + 1 * dpr, cy - rel * gh / 2 + 6 * dpr); ctx.closePath(); ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(gx0 - 4 * dpr, cy - 1 * dpr, 8 * dpr, 2 * dpr);
+      }
+    }
+
+    // predicted horizon (scene mode): where the real horizon sits for this tilt, iPhone 1x lens
+    if (S.hasMotion && S.mode === 'scene') {
+      const half = (S.landscape ? 27 : 35) / DEG;
+      const yN = 0.5 + Math.tan(S.elev / DEG) / (2 * Math.tan(half));
+      if (yN > 0.02 && yN < 0.98) {
+        const okH = S.checks.pitch === 'pass';
+        ctx.save(); ctx.translate(F.x + F.w / 2, F.y + yN * F.h); ctx.rotate(-S.roll / DEG);
+        ctx.setLineDash([10 * dpr, 7 * dpr]); ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = okH ? 'rgba(52,211,153,0.95)' : 'rgba(96,205,255,0.95)';
+        ctx.beginPath(); ctx.moveTo(-F.w, 0); ctx.lineTo(F.w, 0); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = okH ? 'rgba(52,211,153,0.95)' : 'rgba(96,205,255,0.95)';
+        ctx.font = `${11 * dpr}px ${getComputedStyle(document.body).fontFamily}`;
+        ctx.fillText('chân trời', -F.w / 2 + 12 * dpr, -6 * dpr);
+        ctx.restore();
       }
     }
 

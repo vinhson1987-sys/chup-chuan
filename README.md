@@ -21,6 +21,23 @@ Mở link `https://...trycloudflare.com` mà cloudflared in ra trên iPhone.
 
 Sau khi mở, bấm **Chia sẻ → Thêm vào MH chính** để app chạy toàn màn hình.
 
+## Chuẩn áp dụng (có nguồn)
+
+Mọi ngưỡng trong app lấy từ hướng dẫn nhiếp ảnh đã công bố. Con số cụ thể là cách app diễn giải hướng dẫn đó thành phép đo được.
+
+| Luật | Chuẩn | Cách app đo | Nguồn |
+|---|---|---|---|
+| Mắt trên vạch 1/3 | Mắt nằm khoảng 1/3 từ mép trên (33%); ảnh cận mới được cắt đỉnh đầu; không cắt cằm | Cận mặt và nửa người: mắt ở 24–45% chiều cao khung. Cả người: đỉnh đầu trong 22% trên | [Wikipedia – Headroom](https://en.wikipedia.org/wiki/Headroom_(photographic_framing)), [DPS – Portrait crop](https://digital-photography-school.com/good-crop-bad-crop-how-to-crop-portraits/) |
+| Không cắt ở khớp | Không cắt gối, cổ chân, khuỷu, cổ tay, cằm. Cắt giữa đùi, dưới gối, ngang eo, giữa cẳng tay | Khớp nào nằm trong 10% sát mép khung thì báo | [DPS](https://digital-photography-school.com/good-crop-bad-crop-how-to-crop-portraits/), [SLR Lounge](https://www.slrlounge.com/portrait-cropping-guide-bad-portrait-crops-how-to-fix-them/), [PhotoWorkout – Full body](https://www.photoworkout.com/make-full-body-portraits/) |
+| Chiều cao máy | Cận mặt: hơi cao hơn mắt. Nửa người: ngang ngực. Cả người: ngang eo, máy giữ thẳng; chúc xuống làm chân ngắn | Góc máy: cận mặt −14…0°, nửa người −7…+4°, cả người −3…+8° | [PictureCorrect](https://www.picturecorrect.com/how-to-improve-your-portraits-by-using-the-right-camera-height/), [Photofocus](https://photofocus.com/photography/portrait-tips-get-your-camera-lower/), [Shotkit](https://shotkit.com/full-body-photography/) |
+| Selfie | Máy cao hơn mắt 10–20°, hướng xuống mặt | Camera trước chúc xuống 5–25° | [Science of People](https://www.scienceofpeople.com/perfect-selfie/) |
+| Lead room | Chừa khoảng trống phía mặt nhìn / hướng đi | Mặt quay sang một bên thì người phải ở nửa khung đối diện | [Wikipedia – Lead room](https://en.wikipedia.org/wiki/Lead_room), [Expert Photography](https://expertphotography.com/lead-room-principle-photography) |
+| Khoảng cách | Gần quá với ống kính rộng làm méo mặt; iPhone tự báo quá gần/quá xa | Mặt rộng hơn 45% khung → lùi lại, dùng 2x | [Apple – Portrait mode](https://support.apple.com/en-us/102398) |
+| Chân trời | Đặt chân trời trên vạch ngang 1/3 trên hoặc dưới; giữ thẳng; nghiêng mạnh làm nhà cửa đổ | Vẽ chân trời dự đoán từ góc máy (ống 1x iPhone, FOV dọc ≈70° cầm dọc, ≈54° cầm ngang) → cần chúc/ngẩng ±13° (dọc) hoặc ±10° (ngang), sai số 4° | [DPS – Rule of thirds](https://digital-photography-school.com/rule-of-thirds/), [DPS – Horizon](https://digital-photography-school.com/where-to-position-that-horizon/) |
+| Cân máy | Lưới và thước cân của iPhone: chân trời thẳng | Lệch ≤1° (phong cảnh), ≤2° (người) | [Apple – Set up your shot](https://support.apple.com/guide/iphone/set-up-your-shot-iph3dc593597/ios) |
+| Đồ ăn | Ba góc chuẩn: 90° trên xuống (pizza, salad), 45° (phổ biến nhất, dải 25–75°), 0° ngang (burger, bánh tầng) | Đạt khi góc máy ≤−84°, −45±7°, hoặc 0±5° | [Expert Photography](https://expertphotography.com/best-camera-angles-food-photography), [ICE](https://www.ice.edu/blog/food-photography-angles-and-composition) |
+| Ánh sáng | Không có số chuẩn; iPhone chỉ báo "quá tối". App dùng heuristic: độ sáng trung bình, ngược sáng (mặt tối hơn nền), cháy sáng | Ước lượng từ khung hình 48×36 điểm | [Apple – Portrait mode](https://support.apple.com/en-us/102398) |
+
 ## Cấu trúc
 
 - `index.html` – toàn bộ app (giao diện, cảm biến, nhận diện, luật bố cục)
