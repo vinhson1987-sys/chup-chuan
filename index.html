@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0A0C10">
+<link rel="manifest" href="manifest.json">
+<title>Chụp Chuẩn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0A0C10;
+    --surface: rgba(14, 17, 24, 0.72);
+    --surface-solid: #141821;
+    --text: #F2F4F7;
+    --muted: #98A0AC;
+    --accent: #F5B942;
+    --ok: #34D399;
+    --warn: #FB7185;
+    --line: rgba(255, 255, 255, 0.55);
+    --font: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.45;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  button { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Start screen ---------- */
+  #start {
+    height: 100%;
+    display: flex; flex-direction: column;
+    padding: calc(env(safe-area-inset-top, 0px) + 28px) 24px calc(env(safe-area-inset-bottom, 0px) + 24px);
+    gap: 20px;
+    overflow-y: auto;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .mark {
+    width: 44px; height: 44px; border-radius: 14px;
+    background: var(--accent); color: #1a1405;
+    display: grid; place-items: center; font-weight: 700; font-size: 20px;
+  }
+  .brand h1 { font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+  .lead { font-size: 17px; margin: 0; max-width: 32ch; text-wrap: balance; }
+  .how { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .how li {
+    display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start;
+    padding: 12px 14px; border-radius: 14px; background: var(--surface-solid);
+  }
+  .how .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(245,185,66,.14); color: var(--accent); }
+  .how b { display: block; font-weight: 600; }
+  .how span { color: var(--muted); font-size: 13.5px; }
+  .modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .mode-card {
+    text-align: left; padding: 14px; border-radius: 14px; border: 1.5px solid transparent;
+    background: var(--surface-solid); cursor: pointer;
+  }
+  .mode-card[aria-pressed="true"] { border-color: var(--accent); background: rgba(245,185,66,.10); }
+  .mode-card b { display: block; font-weight: 600; margin-bottom: 2px; }
+  .mode-card span { color: var(--muted); font-size: 12.5px; }
+  .label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0; }
+  .cta {
+    margin-top: auto; height: 56px; border-radius: 16px; border: 0;
+    background: var(--accent); color: #1a1405; font-weight: 700; font-size: 17px; cursor: pointer;
+  }
+  .cta:active { transform: scale(.98); }
+  .fine { color: var(--muted); font-size: 12.5px; margin: 0; text-align: center; }
+  .err { color: var(--warn); font-size: 13.5px; margin: 0; }
+
+  /* ---------- Camera screen ---------- */
+  #app { position: fixed; inset: 0; background: #000; }
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #cam.mirror { transform: scaleX(-1); }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .top {
+    position: absolute; left: 0; right: 0; top: 0;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 12px;
+    display: grid; gap: 8px;
+    background: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,0));
+  }
+  .toolrow { display: flex; align-items: flex-start; gap: 8px; }
+  .toolrow .readout { margin-right: auto; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; height: 34px; padding: 0 13px; border-radius: 999px; border: 0;
+    background: rgba(20,24,33,.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font-weight: 600; font-size: 13.5px; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); color: #1a1405; }
+  .icon-btn {
+    flex: 0 0 auto; width: 38px; height: 38px; border-radius: 999px; border: 0;
+    background: rgba(20,24,33,.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .icon-btn[aria-pressed="true"] { background: rgba(245,185,66,.9); color: #1a1405; }
+  .icon-btn svg { width: 20px; height: 20px; }
+
+  .readout {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    background: rgba(10,12,16,.55); padding: 6px 9px; border-radius: 8px; line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout b { color: var(--text); font-weight: 500; }
+  .readout .good { color: var(--ok); }
+
+  .rail {
+    position: absolute; right: 10px; top: 44%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .pose-btn {
+    width: 42px; height: 54px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,.18);
+    background: rgba(20,24,33,.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    display: grid; place-items: center; cursor: pointer; padding: 0;
+  }
+  .pose-btn[aria-pressed="true"] { border-color: var(--accent); background: rgba(245,185,66,.18); }
+  .pose-btn canvas { width: 32px; height: 44px; }
+  .pose-btn.none { font-size: 11px; font-weight: 600; color: var(--muted); }
+  .pose-btn.none[aria-pressed="true"] { color: var(--accent); }
+
+  .bottom {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    display: grid; gap: 12px;
+    background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.72) 40%);
+  }
+  .hint {
+    display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px;
+    min-height: 62px; padding: 10px 14px; border-radius: 16px;
+    background: var(--surface); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1.5px solid rgba(255,255,255,.08);
+    transition: border-color .25s, background .25s;
+  }
+  .hint.ok { border-color: rgba(52,211,153,.7); background: rgba(52,211,153,.14); }
+  .hint.warn { border-color: rgba(245,185,66,.55); }
+  .hint .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.08); }
+  .hint.ok .ic { background: rgba(52,211,153,.25); color: var(--ok); }
+  .hint.warn .ic { background: rgba(245,185,66,.2); color: var(--accent); }
+  .hint .ic svg { width: 22px; height: 22px; }
+  .hint-text { display: grid; gap: 1px; }
+  .hint-text b { font-size: 16.5px; font-weight: 600; line-height: 1.25; }
+  .hint-text span { color: var(--muted); font-size: 12.5px; }
+
+  .checks { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .check {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+    background: rgba(20,24,33,.7); color: var(--muted);
+  }
+  .check::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #5a6270; }
+  .check[data-state="pass"] { color: var(--ok); }
+  .check[data-state="pass"]::before { background: var(--ok); }
+  .check[data-state="fail"] { color: var(--accent); }
+  .check[data-state="fail"]::before { background: var(--accent); }
+
+  .controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+  .thumb {
+    justify-self: start; width: 46px; height: 46px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,.25);
+    background: #1a1e27 center/cover; padding: 0; cursor: pointer;
+  }
+  .shutter {
+    width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; background: transparent;
+    display: grid; place-items: center; cursor: pointer; padding: 0;
+  }
+  .shutter i { display: block; width: 60px; height: 60px; border-radius: 50%; background: #fff; transition: transform .1s, background .2s; }
+  .shutter.ready i { background: var(--ok); }
+  .shutter:active i { transform: scale(.9); }
+  .flip { justify-self: end; }
+
+  #countdown {
+    position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    font-family: var(--mono); font-size: 140px; font-weight: 500; color: #fff;
+    text-shadow: 0 4px 30px rgba(0,0,0,.6);
+  }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  #flash.on { opacity: .85; transition: none; }
+
+  /* ---------- Preview ---------- */
+  #preview {
+    position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    gap: 14px;
+  }
+  #preview img { flex: 1; min-height: 0; width: 100%; object-fit: contain; border-radius: 14px; background: #000; }
+  .row { display: flex; gap: 10px; }
+  .btn {
+    flex: 1; height: 50px; border-radius: 14px; border: 0; font-weight: 600; font-size: 15.5px; cursor: pointer;
+    background: var(--surface-solid);
+  }
+  .btn.primary { background: var(--accent); color: #1a1405; }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 100px); transform: translateX(-50%);
+    background: rgba(20,24,33,.92); padding: 10px 16px; border-radius: 12px; font-size: 14px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; max-width: calc(100% - 32px); text-align: center;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (min-aspect-ratio: 1/1) {
+    .rail { right: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= START ================= -->
+<section id="start">
+  <div class="brand">
+    <div class="mark">CC</div>
+    <div>
+      <h1>Chụp Chuẩn</h1>
+      <p>Máy ảnh tự hướng dẫn góc chụp đẹp</p>
+    </div>
+  </div>
+  <p class="lead">Mở máy ảnh lên, làm theo một dòng gợi ý trên màn hình. Khi mọi thứ xanh, máy tự chụp.</p>
+
+  <ul class="how">
+    <li><div class="ic">1</div><div><b>Cân máy &amp; góc máy</b><span>Cảm biến đo độ nghiêng. Ảnh không bị lệch đường chân trời, người không bị lùn.</span></div></li>
+    <li><div class="ic">2</div><div><b>Bố cục theo chuẩn</b><span>Nhận diện mặt và dáng người: khoảng trống trên đầu, không cắt ở khớp, đứng đúng vạch 1/3.</span></div></li>
+    <li><div class="ic">3</div><div><b>Ánh sáng</b><span>Báo ngược sáng, quá tối, cháy sáng để bạn xoay hướng trước khi bấm.</span></div></li>
+  </ul>
+
+  <p class="label">Bạn định chụp gì?</p>
+  <div class="modes" id="modePick">
+    <button class="mode-card" data-mode="person" aria-pressed="true"><b>Chụp người</b><span>Chân dung, cả người, đi dạo</span></button>
+    <button class="mode-card" data-mode="selfie" aria-pressed="false"><b>Selfie</b><span>Camera trước, góc trên mắt</span></button>
+    <button class="mode-card" data-mode="scene" aria-pressed="false"><b>Phong cảnh</b><span>Đường chân trời thẳng, vạch 1/3</span></button>
+    <button class="mode-card" data-mode="food" aria-pressed="false"><b>Đồ ăn</b><span>Chụp từ trên xuống hoặc 45°</span></button>
+  </div>
+
+  <p class="err" id="startErr" hidden></p>
+  <button class="cta" id="startBtn">Mở máy ảnh</button>
+  <p class="fine">Cần cho phép Camera và Chuyển động. Ảnh chỉ nằm trên máy bạn.</p>
+</section>
+
+<!-- ================= CAMERA ================= -->
+<section id="app" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <canvas id="overlay"></canvas>
+  <div id="flash"></div>
+
+  <div class="top">
+    <div class="chips" id="modeChips">
+      <button class="chip" data-mode="person" aria-pressed="true">Người</button>
+      <button class="chip" data-mode="selfie" aria-pressed="false">Selfie</button>
+      <button class="chip" data-mode="scene" aria-pressed="false">Cảnh</button>
+      <button class="chip" data-mode="food" aria-pressed="false">Đồ ăn</button>
+    </div>
+    <div class="toolrow">
+    <div class="readout" id="readout">
+      Cân: <b id="rRoll">--</b>°  Góc: <b id="rPitch">--</b>°<br>
+      <span id="rDet">Đang tải nhận diện…</span>
+    </div>
+    <button class="icon-btn" id="gridBtn" aria-pressed="true" title="Lưới 1/3">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+    </button>
+    <button class="icon-btn" id="autoBtn" aria-pressed="true" title="Tự chụp khi đạt chuẩn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </button>
+    <button class="icon-btn" id="bodyBtn" aria-pressed="false" title="Kiểm tra cả người (tải thêm mô hình)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2.5"/><path d="M12 8v6M12 14l-3 6M12 14l3 6M8 10l4-2 4 2"/></svg>
+    </button>
+    </div>
+  </div>
+
+  <div class="rail" id="poseRail"></div>
+
+  <div class="bottom">
+    <div class="hint warn" id="hint">
+      <div class="ic" id="hintIc"></div>
+      <div class="hint-text"><b id="hintMain">Đang khởi động…</b><span id="hintSub"></span></div>
+    </div>
+    <div class="checks">
+      <span class="check" data-state="none" id="ckLevel">Cân máy</span>
+      <span class="check" data-state="none" id="ckPitch">Góc máy</span>
+      <span class="check" data-state="none" id="ckSubject">Bố cục</span>
+      <span class="check" data-state="none" id="ckLight">Ánh sáng</span>
+    </div>
+    <div class="controls">
+      <button class="thumb" id="thumb" title="Ảnh vừa chụp"></button>
+      <button class="shutter" id="shutter" title="Chụp"><i></i></button>
+      <button class="icon-btn flip" id="flipBtn" title="Đổi camera">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9 13.5a3 3 0 1 0 6 0"/><path d="M15 11l1.5 2.5L18 11"/></svg>
+      </button>
+    </div>
+  </div>
+  <div id="countdown"></div>
+</section>
+
+<!-- ================= PREVIEW ================= -->
+<section id="preview" hidden>
+  <img id="previewImg" alt="Ảnh vừa chụp">
+  <div class="row">
+    <button class="btn" id="retake">Chụp lại</button>
+    <button class="btn primary" id="save">Lưu ảnh</button>
+  </div>
+</section>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const DEG = 180 / Math.PI;
+
+  // ---------------- State ----------------
+  const S = {
+    mode: 'person',          // person | selfie | scene | food
+    facing: 'environment',
+    grid: true,
+    auto: true,
+    wantBody: false,
+    pose: 0,                 // index into POSES, 0 = none
+    hasMotion: false,
+    roll: 0, elev: 0, gx: 0, gy: 0, gz: -1,
+    faceDet: null, poseDet: null, detBusy: false,
+    subject: null,           // {x0,y0,x1,y1, cx, cy, w, h} normalized in frame coords
+    joints: null,            // pose landmarks normalized
+    lum: null,               // {all, face}
+    checks: { level: 'none', pitch: 'none', subject: 'none', light: 'none' },
+    hint: null, hintCand: null, hintCandSince: 0,
+    allPassSince: 0, counting: false, countAbort: false, lastShot: null,
+    stream: null,
+  };
+
+  // ---------------- Pose templates (normalized in a 1 x 1 box) ----------------
+  // keys: head, neck, ls, rs, le, re, lw, rw, lh, rh, lk, rk, la, ra
+  const POSES = [
+    { name: 'Không', pts: null },
+    { name: 'Đứng thẳng', pts: { head:[.5,.08], neck:[.5,.17], ls:[.40,.21], rs:[.60,.21], le:[.36,.40], re:[.64,.40], lw:[.34,.57], rw:[.66,.57], lh:[.44,.53], rh:[.56,.53], lk:[.43,.76], rk:[.57,.76], la:[.42,.97], ra:[.58,.97] } },
+    { name: 'Chống hông', pts: { head:[.5,.08], neck:[.5,.17], ls:[.40,.21], rs:[.60,.21], le:[.35,.40], re:[.72,.36], lw:[.33,.57], rw:[.58,.50], lh:[.44,.53], rh:[.56,.53], lk:[.41,.76], rk:[.58,.76], la:[.38,.97], ra:[.60,.97] } },
+    { name: 'Bước đi', pts: { head:[.52,.08], neck:[.51,.17], ls:[.42,.21], rs:[.61,.21], le:[.34,.36], re:[.68,.38], lw:[.38,.50], rw:[.72,.54], lh:[.45,.53], rh:[.56,.53], lk:[.37,.74], rk:[.62,.75], la:[.30,.96], ra:[.66,.97] } },
+    { name: 'Vuốt tóc', pts: { head:[.5,.08], neck:[.5,.17], ls:[.40,.21], rs:[.60,.21], le:[.35,.40], re:[.70,.20], lw:[.34,.57], rw:[.58,.08], lh:[.45,.53], rh:[.57,.53], lk:[.41,.76], rk:[.60,.76], la:[.40,.97], ra:[.64,.97] } },
+  ];
+
+  function drawPose(ctx, pts, x, y, w, h, alpha) {
+    const P = (k) => [x + pts[k][0] * w, y + pts[k][1] * h];
+    const lw = Math.max(6, w * 0.16);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const limbs = [['neck','ls'],['neck','rs'],['ls','le'],['le','lw'],['rs','re'],['re','rw'],['ls','lh'],['rs','rh'],['lh','rh'],['lh','lk'],['lk','la'],['rh','rk'],['rk','ra']];
+    const strokeAll = (width, style) => {
+      ctx.lineWidth = width; ctx.strokeStyle = style; ctx.fillStyle = style;
+      ctx.beginPath();
+      for (const [a, b] of limbs) { const A = P(a), B = P(b); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); }
+      ctx.stroke();
+      // torso fill
+      ctx.beginPath();
+      const ls = P('ls'), rs = P('rs'), rh = P('rh'), lh = P('lh');
+      ctx.moveTo(ls[0], ls[1]); ctx.lineTo(rs[0], rs[1]); ctx.lineTo(rh[0], rh[1]); ctx.lineTo(lh[0], lh[1]); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      const hd = P('head');
+      ctx.beginPath(); ctx.arc(hd[0], hd[1], w * 0.085 + width * 0.25, 0, Math.PI * 2); ctx.fill();
+    };
+    strokeAll(lw + 3, 'rgba(255,255,255,0.9)');
+    strokeAll(lw, 'rgba(180,200,235,0.55)');
+    ctx.restore();
+  }
+
+  // ---------------- Elements ----------------
+  const video = $('cam'), overlay = $('overlay'), octx = overlay.getContext('2d');
+  const anaCanvas = document.createElement('canvas'); anaCanvas.width = 48; anaCanvas.height = 36;
+  const actx = anaCanvas.getContext('2d', { willReadFrequently: true });
+  const hintEl = $('hint'), hintMain = $('hintMain'), hintSub = $('hintSub'), hintIc = $('hintIc');
+  const shutter = $('shutter');
+
+  const ICONS = {
+    level: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18"/><path d="M6 8l-3 4 3 4M18 8l3 4-3 4"/></svg>',
+    pitch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M8 7l4-4 4 4M8 17l4 4 4-4"/></svg>',
+    subject: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>',
+    light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  };
+
+  // ---------------- Motion sensors ----------------
+  function onOrientation(e) {
+    if (e.beta == null || e.gamma == null) return;
+    const b = e.beta / DEG, g = e.gamma / DEG;
+    // gravity in device frame, derived from W3C Euler angles
+    const gx = Math.cos(b) * Math.sin(g);
+    const gy = -Math.sin(b);
+    const gz = -Math.cos(b) * Math.cos(g);
+    S.hasMotion = true;
+    const k = 0.25;
+    S.gx += (gx - S.gx) * k; S.gy += (gy - S.gy) * k; S.gz += (gz - S.gz) * k;
+    // roll relative to the nearest upright/landscape orientation
+    let rollRaw = Math.atan2(S.gx, -S.gy) * DEG;
+    let roll = rollRaw - Math.round(rollRaw / 90) * 90;
+    // camera elevation: back camera looks along -z
+    // elevation of the back camera axis: -90 = pointing straight down, 0 = horizon, +90 = up
+    const elev = Math.asin(clamp(S.gz, -1, 1)) * DEG;
+    S.roll = roll; S.elev = elev;
+  }
+
+  async function enableMotion() {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') return false;
+      }
+      window.addEventListener('deviceorientation', onOrientation, true);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // ---------------- Camera ----------------
+  async function openCamera() {
+    if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; }
+    const constraints = {
+      audio: false,
+      video: { facingMode: { ideal: S.facing }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    S.stream = stream;
+    video.srcObject = stream;
+    video.classList.toggle('mirror', S.facing === 'user');
+    await video.play().catch(() => {});
+  }
+
+  // ---------------- Detection (MediaPipe, loaded lazily) ----------------
+  let mp = null;
+  async function loadMP() {
+    if (mp) return mp;
+    const m = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const files = await m.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    mp = { m, files };
+    return mp;
+  }
+  async function loadFace() {
+    try {
+      const { m, files } = await loadMP();
+      S.faceDet = await m.FaceDetector.createFromOptions(files, {
+        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite', delegate: 'GPU' },
+        runningMode: 'VIDEO', minDetectionConfidence: 0.5,
+      });
+      $('rDet').textContent = 'Nhận diện mặt: sẵn sàng';
+    } catch (e) {
+      console.warn('face detector failed', e);
+      $('rDet').textContent = 'Không tải được nhận diện (chỉ dùng cảm biến)';
+    }
+  }
+  async function loadPose() {
+    if (S.poseDet) return;
+    $('rDet').textContent = 'Đang tải mô hình dáng người…';
+    try {
+      const { m, files } = await loadMP();
+      S.poseDet = await m.PoseLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate: 'GPU' },
+        runningMode: 'VIDEO', numPoses: 1,
+      });
+      $('rDet').textContent = 'Nhận diện mặt + dáng người: sẵn sàng';
+    } catch (e) {
+      console.warn('pose failed', e);
+      S.wantBody = false; $('bodyBtn').setAttribute('aria-pressed', 'false');
+      toast('Không tải được mô hình dáng người');
+      $('rDet').textContent = 'Nhận diện mặt: sẵn sàng';
+    }
+  }
+
+  let lastVideoTime = -1;
+  function runDetection() {
+    if (S.detBusy || video.readyState < 2 || !video.videoWidth) return;
+    if (video.currentTime === lastVideoTime) return;
+    lastVideoTime = video.currentTime;
+    S.detBusy = true;
+    try {
+      const now = performance.now();
+      let subject = null, joints = null;
+      const needSubject = S.mode !== 'scene' && S.mode !== 'food';
+      if (needSubject && S.wantBody && S.poseDet) {
+        const res = S.poseDet.detectForVideo(video, now);
+        const lm = res.landmarks && res.landmarks[0];
+        if (lm) {
+          joints = lm;
+          // face box from nose/eyes/ears (0..10)
+          let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+          for (let i = 0; i <= 10; i++) { const p = lm[i]; x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+          const h = (y1 - y0) * 1.9, w = (x1 - x0) * 1.25;
+          const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2 - h * 0.05;
+          subject = mkBox(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
+        }
+      } else if (needSubject && S.faceDet) {
+        const res = S.faceDet.detectForVideo(video, now);
+        const dets = res.detections || [];
+        if (dets.length) {
+          let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+          for (const d of dets) {
+            const b = d.boundingBox;
+            x0 = Math.min(x0, b.originX / video.videoWidth); y0 = Math.min(y0, b.originY / video.videoHeight);
+            x1 = Math.max(x1, (b.originX + b.width) / video.videoWidth); y1 = Math.max(y1, (b.originY + b.height) / video.videoHeight);
+          }
+          subject = mkBox(x0, y0, x1, y1);
+        }
+      }
+      S.subject = subject; S.joints = joints;
+    } catch (e) { console.warn(e); }
+    S.detBusy = false;
+  }
+  function mkBox(x0, y0, x1, y1) { return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 }; }
+
+  // ---------------- Light analysis ----------------
+  let lumTick = 0;
+  function analyzeLight() {
+    if ((lumTick++ % 4) !== 0 || video.readyState < 2) return;
+    try {
+      actx.drawImage(video, 0, 0, 48, 36);
+      const d = actx.getImageData(0, 0, 48, 36).data;
+      let sum = 0, n = 0, fsum = 0, fn = 0, bright = 0;
+      const s = S.subject;
+      for (let y = 0; y < 36; y++) for (let x = 0; x < 48; x++) {
+        const i = (y * 48 + x) * 4;
+        const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        sum += l; n++;
+        if (l > 245) bright++;
+        if (s) {
+          const nx = x / 48, ny = y / 36;
+          if (nx >= s.x0 && nx <= s.x1 && ny >= s.y0 && ny <= s.y1) { fsum += l; fn++; }
+        }
+      }
+      S.lum = { all: sum / n, face: fn ? fsum / fn : null, blown: bright / n };
+    } catch (e) { S.lum = null; }
+  }
+
+  // ---------------- Rules ----------------
+  // Returns {checks, hints[]} where hints are ordered by priority.
+  function evaluate() {
+    const hints = [];
+    const C = { level: 'none', pitch: 'none', subject: 'none', light: 'none' };
+    const mode = S.mode;
+    const roll = S.roll, elev = S.elev;
+    const absR = Math.abs(roll);
+    const fullBody = !!(S.joints && [27, 28].some(i => S.joints[i].visibility > 0.5 && S.joints[i].y < 1.02));
+
+    // ---- Level ----
+    if (S.hasMotion) {
+      if (mode === 'food' && elev <= -80) {
+        const flat = Math.abs(S.gx) < 0.07 && Math.abs(S.gy) < 0.07;
+        C.level = flat ? 'pass' : 'fail';
+        if (!flat) hints.push({ k: 'level', main: 'Giữ máy song song mặt bàn', sub: 'Đưa chấm tròn vào giữa vòng tròn' });
+      } else {
+        const tol = mode === 'scene' ? 1.0 : 1.8;
+        C.level = absR <= tol ? 'pass' : 'fail';
+        if (absR > tol) {
+          const side = roll > 0 ? 'phải' : 'trái';
+          hints.push({ k: 'level', main: `Nâng mép ${side} lên ${absR.toFixed(0)}°`, sub: 'Đường vàng trùng đường chân trời thì ảnh không bị lệch' });
+        }
+      }
+    }
+
+    // ---- Pitch / camera angle ----
+    if (S.hasMotion) {
+      let lo, hi, low, high;
+      if (mode === 'person') {
+        if (fullBody) { lo = -3; hi = 9; }
+        else { lo = -9; hi = 9; }
+        low = fullBody ? 'Hạ máy xuống ngang eo, hơi ngẩng lên' : 'Máy đang chúc xuống, hạ máy thấp hơn';
+        high = 'Máy đang ngẩng lên, giữ máy thẳng đứng';
+        const sub = fullBody ? 'Chụp từ thấp, máy thẳng: chân dài hơn thật' : 'Máy thẳng đứng thì người không bị lùn, méo';
+        C.pitch = (elev >= lo && elev <= hi) ? 'pass' : 'fail';
+        if (C.pitch === 'fail') hints.push({ k: 'pitch', main: elev < lo ? low : high, sub });
+      } else if (mode === 'selfie') {
+        const ef = -elev; // front camera looks along +z
+        lo = -26; hi = -4;
+        C.pitch = (ef >= lo && ef <= hi) ? 'pass' : 'fail';
+        if (C.pitch === 'fail') hints.push({ k: 'pitch', main: ef > hi ? 'Nâng máy cao hơn mắt, hướng xuống mặt' : 'Máy cao quá, hạ xuống một chút', sub: 'Góc từ trên xuống nhẹ: mắt to, mặt thon' });
+      } else if (mode === 'scene') {
+        lo = -14; hi = 14;
+        C.pitch = (elev >= lo && elev <= hi) ? 'pass' : 'fail';
+        if (C.pitch === 'fail') hints.push({ k: 'pitch', main: elev < lo ? 'Đừng chúc máy xuống, giữ máy thẳng' : 'Đừng ngẩng máy, giữ máy thẳng', sub: 'Máy thẳng thì nhà cửa, cây cối không bị đổ' });
+      } else if (mode === 'food') {
+        const flat = elev <= -84, angle = elev >= -52 && elev <= -36;
+        C.pitch = (flat || angle) ? 'pass' : 'fail';
+        if (!C.pitch || C.pitch === 'fail') {
+          if (elev > -30) hints.push({ k: 'pitch', main: 'Hướng máy xuống bàn ăn', sub: 'Chụp từ trên xuống (90°) hoặc nghiêng 45°' });
+          else if (elev < -60) hints.push({ k: 'pitch', main: 'Giữ máy nằm ngang hẳn (90°)', sub: `Còn ${Math.abs(-90 - elev).toFixed(0)}° nữa` });
+          else hints.push({ k: 'pitch', main: elev > -36 ? 'Nghiêng máy xuống thêm, tới 45°' : 'Ngẩng máy lên một chút, tới 45°', sub: 'Góc 45°: thấy cả mặt và chiều cao món ăn' });
+        }
+      }
+    }
+
+    // ---- Subject / composition ----
+    if (mode === 'person' || mode === 'selfie') {
+      const s = S.subject;
+      if (!S.faceDet && !S.poseDet) {
+        C.subject = 'none';
+      } else if (!s) {
+        C.subject = 'fail';
+        hints.push({ k: 'subject', main: 'Đưa người vào khung hình', sub: 'Chưa thấy khuôn mặt' });
+      } else {
+        const probs = [];
+        const minW = mode === 'selfie' ? 0.16 : (fullBody ? 0.05 : 0.08);
+        const maxW = mode === 'selfie' ? 0.55 : 0.42;
+        if (s.w < minW) probs.push({ main: 'Tiến lại gần hơn', sub: 'Người đang quá nhỏ trong khung' });
+        else if (s.w > maxW) probs.push({ main: 'Lùi ra xa một chút', sub: 'Mặt chiếm quá nhiều khung' });
+        if (s.y0 < 0.035) probs.push({ main: 'Đầu chạm mép trên, hạ khung xuống', sub: 'Chừa khoảng trống trên đầu' });
+        else if (s.y0 > (fullBody ? 0.20 : 0.30)) probs.push({ main: 'Thừa khoảng trống trên đầu', sub: 'Hạ máy thấp xuống, đừng chúc máy' });
+        if (s.cx < 0.24) probs.push({ main: 'Dịch khung sang trái', sub: 'Người đang sát mép' });
+        else if (s.cx > 0.76) probs.push({ main: 'Dịch khung sang phải', sub: 'Người đang sát mép' });
+        if (S.joints) {
+          const J = S.joints;
+          const cut = [[25, 'đầu gối'], [26, 'đầu gối'], [27, 'cổ chân'], [28, 'cổ chân'], [13, 'khuỷu tay'], [14, 'khuỷu tay'], [15, 'cổ tay'], [16, 'cổ tay']]
+            .find(([i]) => J[i].visibility > 0.5 && ((J[i].y > 0.9 && J[i].y < 1.03) || J[i].x < 0.03 || J[i].x > 0.97));
+          if (cut) probs.push({ main: `Đừng cắt ở ${cut[1]}`, sub: 'Lùi lại hoặc chỉnh khung: cắt ở giữa đùi, giữa bắp tay thì đẹp' });
+          if (fullBody) {
+            const footY = Math.max(J[27].y, J[28].y, J[31].y, J[32].y);
+            if (footY > 0.985) probs.push({ main: 'Chừa chỗ dưới bàn chân', sub: 'Chân sát mép dưới trông bị cụt' });
+            else if (footY < 0.80) probs.push({ main: 'Hạ khung xuống hoặc tiến lại gần', sub: 'Quá nhiều nền dưới chân' });
+          }
+        }
+        C.subject = probs.length ? 'fail' : 'pass';
+        for (const p of probs) hints.push({ k: 'subject', ...p });
+      }
+    }
+
+    // ---- Light ----
+    if (S.lum) {
+      const L = S.lum;
+      let p = null;
+      if (L.all < 38) p = { main: 'Quá tối, tìm chỗ sáng hơn', sub: 'Ảnh tối sẽ bị nhiễu hạt' };
+      else if (L.blown > 0.22) p = { main: 'Cháy sáng, đổi hướng chụp', sub: 'Tránh chụp thẳng vào nguồn sáng' };
+      else if (L.face != null && L.all > 90 && L.face < L.all * 0.55) p = { main: 'Ngược sáng: xoay để ánh sáng chiếu vào mặt', sub: 'Hoặc chạm vào mặt trên màn hình để đo sáng' };
+      else if (L.face != null && L.face > 238) p = { main: 'Mặt bị cháy sáng', sub: 'Lùi vào bóng râm hoặc xoay người' };
+      C.light = p ? 'fail' : 'pass';
+      if (p) hints.push({ k: 'light', ...p });
+    }
+
+    return { C, hints };
+  }
+
+  // ---------------- Hint display (debounced) ----------------
+  function showHint(h, ok) {
+    hintEl.classList.toggle('ok', ok); hintEl.classList.toggle('warn', !ok);
+    hintIc.innerHTML = ok ? ICONS.ok : (ICONS[h.k] || ICONS.info);
+    hintMain.textContent = h.main; hintSub.textContent = h.sub || '';
+  }
+  function updateHint(res) {
+    const now = performance.now();
+    const allKnown = Object.values(res.C).some(v => v !== 'none');
+    const cand = res.hints[0] || (allKnown ? { k: 'ok', main: S.auto ? 'Chuẩn rồi, giữ yên máy' : 'Chuẩn rồi, bấm chụp', sub: 'Mọi kiểm tra đều đạt' } : { k: 'info', main: 'Đang chờ cảm biến…', sub: 'Thiết bị này không có cảm biến chuyển động' });
+    const key = cand.main;
+    if (S.hintCand !== key) { S.hintCand = key; S.hintCandSince = now; }
+    if (!S.hint || (now - S.hintCandSince > 350) || cand.k === 'ok') {
+      if (!S.hint || S.hint.main !== key) { S.hint = cand; showHint(cand, cand.k === 'ok'); }
+    }
+    for (const k of ['level', 'pitch', 'subject', 'light']) {
+      $('ck' + k[0].toUpperCase() + k.slice(1)).dataset.state = res.C[k];
+    }
+    const pass = res.hints.length === 0 && allKnown;
+    shutter.classList.toggle('ready', pass);
+    return pass;
+  }
+
+  // ---------------- Auto capture ----------------
+  function handleAuto(pass) {
+    const now = performance.now();
+    if (!S.auto || $('preview').hidden === false) { S.allPassSince = 0; return; }
+    if (!pass) { S.allPassSince = 0; if (S.counting) S.countAbort = true; return; }
+    if (!S.allPassSince) S.allPassSince = now;
+    if (!S.counting && now - S.allPassSince > 700) startCountdown();
+  }
+  async function startCountdown() {
+    S.counting = true; S.countAbort = false;
+    const cd = $('countdown');
+    for (const n of [3, 2, 1]) {
+      cd.textContent = n;
+      await new Promise(r => setTimeout(r, 900));
+      if (S.countAbort) { cd.textContent = ''; S.counting = false; S.allPassSince = 0; return; }
+    }
+    cd.textContent = '';
+    S.counting = false;
+    capture();
+  }
+
+  // ---------------- Capture ----------------
+  function capture() {
+    if (!video.videoWidth) return;
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0);
+    const flash = $('flash'); flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 60);
+    c.toBlob((blob) => {
+      if (!blob) return;
+      if (S.lastShot && S.lastShot.url) URL.revokeObjectURL(S.lastShot.url);
+      const url = URL.createObjectURL(blob);
+      S.lastShot = { blob, url };
+      $('thumb').style.backgroundImage = `url(${url})`;
+      $('previewImg').src = url;
+      $('preview').hidden = false;
+      S.allPassSince = 0;
+    }, 'image/jpeg', 0.94);
+  }
+  async function savePhoto() {
+    if (!S.lastShot) return;
+    const file = new File([S.lastShot.blob], `chup-chuan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        toast('Đã mở bảng chia sẻ, chọn "Lưu ảnh"');
+        return;
+      }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = S.lastShot.url; a.download = file.name; a.target = '_blank';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Ảnh đã mở, nhấn giữ để lưu');
+  }
+
+  // ---------------- Overlay drawing ----------------
+  function frameRect() {
+    const W = overlay.width, H = overlay.height;
+    const vw = video.videoWidth || 3, vh = video.videoHeight || 4;
+    const sc = Math.min(W / vw, H / vh);
+    const fw = vw * sc, fh = vh * sc;
+    return { x: (W - fw) / 2, y: (H - fh) / 2, w: fw, h: fh, sc };
+  }
+  function draw() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cw = Math.round(overlay.clientWidth * dpr), ch = Math.round(overlay.clientHeight * dpr);
+    if (overlay.width !== cw || overlay.height !== ch) { overlay.width = cw; overlay.height = ch; }
+    const ctx = octx; ctx.clearRect(0, 0, cw, ch);
+    const F = frameRect();
+    const mirror = S.facing === 'user';
+    const mx = (nx) => F.x + (mirror ? 1 - nx : nx) * F.w;
+    const my = (ny) => F.y + ny * F.h;
+
+    // grid
+    if (S.grid) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      for (const t of [1 / 3, 2 / 3]) {
+        ctx.moveTo(F.x + F.w * t, F.y); ctx.lineTo(F.x + F.w * t, F.y + F.h);
+        ctx.moveTo(F.x, F.y + F.h * t); ctx.lineTo(F.x + F.w, F.y + F.h * t);
+      }
+      ctx.stroke();
+    }
+
+    // level indicator
+    if (S.hasMotion) {
+      const cx = F.x + F.w / 2, cy = F.y + F.h / 2;
+      if (S.mode === 'food' && S.elev < -60) {
+        // bubble level
+        const R = 34 * dpr;
+        ctx.lineWidth = 2 * dpr; ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, 8 * dpr, 0, Math.PI * 2); ctx.stroke();
+        const bx = cx + clamp(S.gx, -0.5, 0.5) * R * 3, by = cy - clamp(S.gy, -0.5, 0.5) * R * 3;
+        const ok = Math.abs(S.gx) < 0.07 && Math.abs(S.gy) < 0.07;
+        ctx.fillStyle = ok ? 'rgba(52,211,153,0.95)' : 'rgba(245,185,66,0.95)';
+        ctx.beginPath(); ctx.arc(bx, by, 9 * dpr, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const ok = S.checks.level === 'pass';
+        const len = Math.min(F.w, F.h) * 0.36;
+        ctx.save(); ctx.translate(cx, cy);
+        // fixed reference
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.5 * dpr;
+        ctx.beginPath(); ctx.moveTo(-len - 14 * dpr, 0); ctx.lineTo(-len + 10 * dpr, 0); ctx.moveTo(len - 10 * dpr, 0); ctx.lineTo(len + 14 * dpr, 0); ctx.stroke();
+        // horizon (rotates with device roll so it stays level with the real horizon)
+        ctx.rotate(-S.roll / DEG);
+        ctx.strokeStyle = ok ? 'rgba(52,211,153,0.95)' : 'rgba(245,185,66,0.95)'; ctx.lineWidth = 2.5 * dpr;
+        ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
+        ctx.restore();
+        // pitch gauge (left side)
+        const gx0 = F.x + 22 * dpr, gy0 = cy - 70 * dpr, gh = 140 * dpr;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5 * dpr;
+        ctx.beginPath(); ctx.moveTo(gx0, gy0); ctx.lineTo(gx0, gy0 + gh); ctx.stroke();
+        const okP = S.checks.pitch === 'pass';
+        const target = S.mode === 'selfie' ? 15 : (S.mode === 'food' ? -90 : 0);
+        const rel = clamp((S.elev - target) / 40, -1, 1);
+        ctx.fillStyle = okP ? 'rgba(52,211,153,0.95)' : 'rgba(245,185,66,0.95)';
+        ctx.beginPath(); ctx.moveTo(gx0 - 9 * dpr, cy - rel * gh / 2); ctx.lineTo(gx0 + 1 * dpr, cy - rel * gh / 2 - 6 * dpr); ctx.lineTo(gx0 + 1 * dpr, cy - rel * gh / 2 + 6 * dpr); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(gx0 - 4 * dpr, cy - 1 * dpr, 8 * dpr, 2 * dpr);
+      }
+    }
+
+    // pose template
+    const P = POSES[S.pose];
+    if (P.pts && (S.mode === 'person' || S.mode === 'selfie')) {
+      const h = F.h * 0.86, w = h * 0.42;
+      drawPose(ctx, P.pts, F.x + F.w / 2 - w / 2, F.y + F.h * 0.08, w, h, 0.9);
+    }
+
+    // subject box + ideal head zone
+    if (S.mode === 'person' || S.mode === 'selfie') {
+      const s = S.subject;
+      if (s) {
+        const ok = S.checks.subject === 'pass';
+        ctx.strokeStyle = ok ? 'rgba(52,211,153,0.9)' : 'rgba(245,185,66,0.9)'; ctx.lineWidth = 2 * dpr;
+        const x0 = mx(mirror ? s.x1 : s.x0), x1 = mx(mirror ? s.x0 : s.x1);
+        roundRect(ctx, x0, my(s.y0), x1 - x0, (s.y1 - s.y0) * F.h, 10 * dpr); ctx.stroke();
+      }
+      if (S.joints) {
+        ctx.fillStyle = 'rgba(52,211,153,0.7)';
+        for (const i of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+          const j = S.joints[i]; if (j.visibility < 0.5) continue;
+          ctx.beginPath(); ctx.arc(mx(j.x), my(j.y), 3.5 * dpr, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  // ---------------- Main loop ----------------
+  let frame = 0;
+  function loop() {
+    requestAnimationFrame(loop);
+    if ($('app').hidden) return;
+    runDetection();
+    analyzeLight();
+    const res = evaluate();
+    S.checks = res.C;
+    const pass = updateHint(res);
+    handleAuto(pass);
+    draw();
+    if ((frame++ % 6) === 0) {
+      $('rRoll').textContent = S.hasMotion ? S.roll.toFixed(1) : '--';
+      $('rPitch').textContent = S.hasMotion ? S.elev.toFixed(0) : '--';
+      $('rRoll').className = S.checks.level === 'pass' ? 'good' : '';
+      $('rPitch').className = S.checks.pitch === 'pass' ? 'good' : '';
+    }
+  }
+
+  // ---------------- UI wiring ----------------
+  function setMode(m) {
+    S.mode = m;
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+    const wantFacing = m === 'selfie' ? 'user' : 'environment';
+    if (!$('app').hidden && wantFacing !== S.facing) { S.facing = wantFacing; openCamera().catch(showCamError); }
+    else S.facing = wantFacing;
+    $('poseRail').hidden = !(m === 'person' || m === 'selfie');
+    S.hint = null; S.allPassSince = 0;
+  }
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+  function showCamError(e) {
+    const el = $('startErr'); el.hidden = false;
+    el.textContent = 'Không mở được camera: ' + (e && e.message ? e.message : e) + '. Hãy mở bằng Safari qua địa chỉ https:// và cho phép Camera.';
+    $('app').hidden = true; $('start').hidden = false;
+  }
+
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  $('gridBtn').addEventListener('click', () => { S.grid = !S.grid; $('gridBtn').setAttribute('aria-pressed', String(S.grid)); });
+  $('autoBtn').addEventListener('click', () => { S.auto = !S.auto; $('autoBtn').setAttribute('aria-pressed', String(S.auto)); S.allPassSince = 0; toast(S.auto ? 'Tự chụp: bật' : 'Tự chụp: tắt'); });
+  $('bodyBtn').addEventListener('click', () => {
+    S.wantBody = !S.wantBody; $('bodyBtn').setAttribute('aria-pressed', String(S.wantBody));
+    if (S.wantBody) loadPose(); else S.joints = null;
+  });
+  $('flipBtn').addEventListener('click', () => { S.facing = S.facing === 'user' ? 'environment' : 'user'; openCamera().catch(showCamError); });
+  $('shutter').addEventListener('click', () => { S.countAbort = true; capture(); });
+  $('thumb').addEventListener('click', () => { if (S.lastShot) $('preview').hidden = false; });
+  $('retake').addEventListener('click', () => { $('preview').hidden = true; S.allPassSince = 0; });
+  $('save').addEventListener('click', savePhoto);
+
+  // pose rail
+  (function buildRail() {
+    const rail = $('poseRail');
+    POSES.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.className = 'pose-btn' + (p.pts ? '' : ' none');
+      b.setAttribute('aria-pressed', String(i === S.pose));
+      b.title = p.name;
+      if (p.pts) {
+        const c = document.createElement('canvas'); c.width = 72; c.height = 100;
+        const ctx = c.getContext('2d');
+        drawPose(ctx, p.pts, 14, 6, 44, 90, 1);
+        b.appendChild(c);
+      } else b.textContent = 'Tắt';
+      b.addEventListener('click', () => {
+        S.pose = i;
+        rail.querySelectorAll('button').forEach((x, j) => x.setAttribute('aria-pressed', String(j === i)));
+        if (p.pts) toast('Dáng mẫu: ' + p.name + '. Cho người chụp đứng khớp bóng.');
+      });
+      rail.appendChild(b);
+    });
+  })();
+
+  $('startBtn').addEventListener('click', async () => {
+    const btn = $('startBtn'); btn.disabled = true; btn.textContent = 'Đang mở…';
+    $('startErr').hidden = true;
+    const motionOK = await enableMotion();
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Trình duyệt không hỗ trợ camera');
+      await openCamera();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Mở máy ảnh';
+      showCamError(e); return;
+    }
+    $('start').hidden = true; $('app').hidden = false;
+    btn.disabled = false; btn.textContent = 'Mở máy ảnh';
+    if (!motionOK) toast('Chưa có quyền chuyển động: bỏ qua kiểm tra cân máy');
+    loadFace();
+    try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+  });
+
+  setMode('person');
+  requestAnimationFrame(loop);
+  window.__cc = { S, onOrientation, evaluate };
+})();
+</script>
+</body>
+</html>
