@@ -68,6 +68,7 @@
   .how b { display: block; font-weight: 600; }
   .how span { color: var(--muted); font-size: 13.5px; }
   .modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .modes .mode-card:last-child { grid-column: span 2; }
   .mode-card {
     text-align: left; padding: 14px; border-radius: 14px; border: 1.5px solid transparent;
     background: var(--surface-solid); cursor: pointer;
@@ -121,6 +122,10 @@
   }
   .readout b { color: var(--text); font-weight: 500; }
   .readout .good { color: var(--ok); }
+  .stepper { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; vertical-align: middle; }
+  .stepper button { width: 22px; height: 22px; border-radius: 6px; border: 0; background: rgba(255,255,255,.12); color: var(--text); font-weight: 700; line-height: 1; cursor: pointer; padding: 0; }
+  .stepper b { min-width: 3.5ch; text-align: center; }
+  .preview-info { color: var(--muted); font-size: 13px; margin: 0; text-align: center; }
 
   .rail {
     position: absolute; right: 10px; top: 44%; transform: translateY(-50%);
@@ -244,6 +249,7 @@
     <button class="mode-card" data-mode="selfie" aria-pressed="false"><b>Selfie</b><span>Camera trước, góc trên mắt</span></button>
     <button class="mode-card" data-mode="scene" aria-pressed="false"><b>Phong cảnh</b><span>Đường chân trời thẳng, vạch 1/3</span></button>
     <button class="mode-card" data-mode="food" aria-pressed="false"><b>Đồ ăn</b><span>Chụp từ trên xuống hoặc 45°</span></button>
+    <button class="mode-card" data-mode="group" aria-pressed="false"><b>Nhóm nhiều người</b><span>Đủ mặt, không ai sát mép, chụp liền 3 tấm chống nháy mắt</span></button>
   </div>
 
   <p class="err" id="startErr" hidden></p>
@@ -263,11 +269,13 @@
       <button class="chip" data-mode="selfie" aria-pressed="false">Selfie</button>
       <button class="chip" data-mode="scene" aria-pressed="false">Cảnh</button>
       <button class="chip" data-mode="food" aria-pressed="false">Đồ ăn</button>
+      <button class="chip" data-mode="group" aria-pressed="false">Nhóm</button>
     </div>
     <div class="toolrow">
     <div class="readout" id="readout">
       Cân: <b id="rRoll">--</b>°  Góc: <b id="rPitch">--</b>°<br>
       <span id="rDet">Đang tải nhận diện…</span>
+      <span id="groupRow" hidden><br>Số người: <span class="stepper"><button id="cntMinus" title="Bớt">−</button><b id="cntVal">Tự động</b><button id="cntPlus" title="Thêm">+</button></span></span>
     </div>
     <button class="icon-btn" id="gridBtn" aria-pressed="true" title="Lưới 1/3">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
@@ -308,6 +316,7 @@
 <!-- ================= PREVIEW ================= -->
 <section id="preview" hidden>
   <img id="previewImg" alt="Ảnh vừa chụp">
+  <p class="preview-info" id="previewInfo" hidden></p>
   <div class="row">
     <button class="btn" id="retake">Chụp lại</button>
     <button class="btn primary" id="save">Lưu ảnh</button>
@@ -334,6 +343,9 @@
     roll: 0, elev: 0, gx: 0, gy: 0, gz: -1, landscape: false,
     faceDet: null, poseDet: null, detBusy: false,
     subject: null,           // {x0,y0,x1,y1, cx, cy, w, h} normalized in frame coords
+    faces: [],               // every detected face box (group mode)
+    expected: 0,             // expected head count in group mode, 0 = auto
+    lastShots: [],           // burst frames of the last capture
     joints: null,            // pose landmarks normalized
     lum: null,               // {all, face}
     checks: { level: 'none', pitch: 'none', subject: 'none', light: 'none' },
@@ -487,9 +499,9 @@
     S.detBusy = true;
     try {
       const now = performance.now();
-      let subject = null, joints = null;
+      let subject = null, joints = null, faces = [];
       const needSubject = S.mode !== 'scene' && S.mode !== 'food';
-      if (needSubject && S.wantBody && S.poseDet) {
+      if (needSubject && S.mode !== 'group' && S.wantBody && S.poseDet) {
         const res = S.poseDet.detectForVideo(video, now);
         const lm = res.landmarks && res.landmarks[0];
         if (lm) {
@@ -507,22 +519,24 @@
         const res = S.faceDet.detectForVideo(video, now);
         const dets = res.detections || [];
         if (dets.length) {
-          let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+          const vw = video.videoWidth, vh = video.videoHeight;
           for (const d of dets) {
             const b = d.boundingBox;
-            x0 = Math.min(x0, b.originX / video.videoWidth); y0 = Math.min(y0, b.originY / video.videoHeight);
-            x1 = Math.max(x1, (b.originX + b.width) / video.videoWidth); y1 = Math.max(y1, (b.originY + b.height) / video.videoHeight);
+            const f = mkBox(b.originX / vw, b.originY / vh, (b.originX + b.width) / vw, (b.originY + b.height) / vh);
+            const kp = d.keypoints || [];
+            if (kp.length >= 3) {
+              f.eyeY = (kp[0].y + kp[1].y) / 2;
+              f.yaw = (kp[2].x - (kp[0].x + kp[1].x) / 2) / Math.max(0.01, Math.abs(kp[0].x - kp[1].x));
+            }
+            faces.push(f);
           }
-          subject = mkBox(x0, y0, x1, y1);
-          const big = dets.reduce((a, b) => (b.boundingBox.width > a.boundingBox.width ? b : a));
-          const kp = big.keypoints || [];
-          if (kp.length >= 3) {
-            subject.eyeY = (kp[0].y + kp[1].y) / 2;
-            subject.yaw = (kp[2].x - (kp[0].x + kp[1].x) / 2) / Math.max(0.01, Math.abs(kp[0].x - kp[1].x));
-          }
+          faces.sort((a, b) => a.cx - b.cx);
+          subject = mkBox(Math.min(...faces.map(f => f.x0)), Math.min(...faces.map(f => f.y0)), Math.max(...faces.map(f => f.x1)), Math.max(...faces.map(f => f.y1)));
+          const big = faces.reduce((a, b) => (b.w > a.w ? b : a));
+          subject.eyeY = big.eyeY; subject.yaw = big.yaw;
         }
       }
-      S.subject = subject; S.joints = joints;
+      S.subject = subject; S.joints = joints; S.faces = faces;
     } catch (e) { console.warn(e); }
     S.detBusy = false;
   }
@@ -629,6 +643,45 @@
       }
     }
 
+    // ---- Group: camera at eye level or slightly above so back rows stay visible ----
+    if (S.hasMotion && mode === 'group') {
+      C.pitch = (elev >= -12 && elev <= 3) ? 'pass' : 'fail';
+      if (C.pitch === 'fail') hints.push({ k: 'pitch', main: elev < -12 ? 'Máy chúc xuống quá, hạ máy thấp lại' : 'Nâng máy cao hơn mắt một chút, hơi chúc xuống', sub: 'Chuẩn nhóm: máy ngang mắt hoặc hơi cao để thấy hết mặt hàng sau' });
+    }
+
+    // ---- Group composition: everyone visible, no one at the edge, group tight and centered ----
+    if (mode === 'group') {
+      const F = S.faces;
+      if (!S.faceDet) C.subject = 'none';
+      else if (!F.length) { C.subject = 'fail'; hints.push({ k: 'subject', main: 'Đưa cả nhóm vào khung hình', sub: 'Chưa thấy khuôn mặt nào' }); }
+      else {
+        const probs = [];
+        const n = F.length;
+        if (S.expected > 0 && n < S.expected) probs.push({ main: `Mới thấy ${n}/${S.expected} mặt`, sub: 'Ai bị che thì nhích sang, hàng sau đứng so le giữa hai đầu hàng trước' });
+        const first = F[0], last = F[n - 1];
+        if (first.x0 < 0.04) probs.push({ main: `Người ngoài cùng bên ${LEFT} sát mép`, sub: 'Cả nhóm đứng sát vào nhau hoặc người chụp lùi lại' });
+        else if (last.x1 > 0.96) probs.push({ main: `Người ngoài cùng bên ${RIGHT} sát mép`, sub: 'Cả nhóm đứng sát vào nhau hoặc người chụp lùi lại' });
+        if (s.y0 < 0.03) probs.push({ main: 'Đầu bị cắt, hạ khung xuống', sub: 'Chừa khoảng trống trên đầu người cao nhất' });
+        if (s.y1 > 0.97) probs.push({ main: 'Đừng cắt ở cằm', sub: 'Hàng trước phải thấy trọn mặt' });
+        const ws = F.map(f => f.w), wMin = Math.min(...ws), wMax = Math.max(...ws), wAvg = ws.reduce((a, b) => a + b, 0) / n;
+        if (wMin < 0.045) probs.push({ main: 'Mặt quá nhỏ, tiến lại gần hơn', sub: 'Dùng ống 1x, đừng dùng 0.5x: người hai mép sẽ bị méo' });
+        else if (wMax > 0.4) probs.push({ main: 'Lùi ra xa một chút', sub: 'Gần quá thì người ở mép bị méo' });
+        if (n >= 2 && wMax / wMin > 2.2) probs.push({ main: 'Hàng sau bị nhỏ: đứng gần hàng trước hơn', sub: 'Các hàng cách nhau ngắn thì mặt đều nét và đều cỡ' });
+        let gap = 0;
+        for (let i = 1; i < n; i++) gap = Math.max(gap, F[i].x0 - F[i - 1].x1);
+        if (gap > wAvg * 1.5) probs.push({ main: 'Đứng sát nhau hơn', sub: 'Khoảng trống giữa người làm nhóm rời rạc' });
+        if (s.w > 0.85) probs.push({ main: 'Nhóm dàn quá rộng: đứng sát nhau hơn', sub: 'Ống kính rộng làm méo người ở hai mép khung' });
+        if (s.cx < 0.38) probs.push({ main: `Dịch khung sang ${LEFT}`, sub: 'Ảnh nhóm nên cân giữa khung' });
+        else if (s.cx > 0.62) probs.push({ main: `Dịch khung sang ${RIGHT}`, sub: 'Ảnh nhóm nên cân giữa khung' });
+        const eyes = F.filter(f => f.eyeY != null).map(f => f.eyeY);
+        const eyeAvg = eyes.length ? eyes.reduce((a, b) => a + b, 0) / eyes.length : s.y0 + s.h * 0.4;
+        if (eyeAvg > 0.52) probs.push({ main: 'Thừa khoảng trống trên đầu, hạ máy xuống', sub: 'Mắt cả nhóm nằm quanh vạch ngang 1/3 trên' });
+        else if (eyeAvg < 0.2) probs.push({ main: 'Nâng khung lên, chừa chỗ trên đầu', sub: 'Mắt cả nhóm nằm quanh vạch ngang 1/3 trên' });
+        C.subject = probs.length ? 'fail' : 'pass';
+        for (const p of probs) hints.push({ k: 'subject', ...p });
+      }
+    }
+
     // ---- Subject / composition ----
     if (mode === 'person' || mode === 'selfie') {
       if (!S.faceDet && !S.poseDet) {
@@ -697,7 +750,8 @@
   function updateHint(res) {
     const now = performance.now();
     const allKnown = Object.values(res.C).some(v => v !== 'none');
-    const cand = res.hints[0] || (allKnown ? { k: 'ok', main: S.auto ? 'Chuẩn rồi, giữ yên máy' : 'Chuẩn rồi, bấm chụp', sub: 'Mọi kiểm tra đều đạt' } : { k: 'info', main: 'Đang chờ cảm biến…', sub: 'Thiết bị này không có cảm biến chuyển động' });
+    const okSub = S.mode === 'group' ? `Sẽ chụp liền 3 tấm đề phòng nháy mắt${S.faces.length ? ` · ${S.faces.length} mặt` : ''}` : 'Mọi kiểm tra đều đạt';
+    const cand = res.hints[0] || (allKnown ? { k: 'ok', main: S.auto ? 'Chuẩn rồi, giữ yên máy' : 'Chuẩn rồi, bấm chụp', sub: okSub } : { k: 'info', main: 'Đang chờ cảm biến…', sub: 'Thiết bị này không có cảm biến chuyển động' });
     const key = cand.main;
     if (S.hintCand !== key) { S.hintCand = key; S.hintCandSince = now; }
     if (!S.hint || (now - S.hintCandSince > 350) || cand.k === 'ok') {
@@ -733,35 +787,53 @@
   }
 
   // ---------------- Capture ----------------
-  function capture() {
-    if (!video.videoWidth) return;
-    const c = document.createElement('canvas');
-    c.width = video.videoWidth; c.height = video.videoHeight;
-    c.getContext('2d').drawImage(video, 0, 0);
-    const flash = $('flash'); flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 60);
-    c.toBlob((blob) => {
-      if (!blob) return;
-      if (S.lastShot && S.lastShot.url) URL.revokeObjectURL(S.lastShot.url);
-      const url = URL.createObjectURL(blob);
-      S.lastShot = { blob, url };
-      $('thumb').style.backgroundImage = `url(${url})`;
-      $('previewImg').src = url;
-      $('preview').hidden = false;
-      S.allPassSince = 0;
-    }, 'image/jpeg', 0.94);
+  function grabFrame() {
+    return new Promise((resolve) => {
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth; c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video, 0, 0);
+      const flash = $('flash'); flash.classList.add('on'); setTimeout(() => flash.classList.remove('on'), 60);
+      c.toBlob((blob) => resolve(blob ? { blob, url: URL.createObjectURL(blob) } : null), 'image/jpeg', 0.94);
+    });
+  }
+  let capturing = false;
+  // Group photos are taken as a burst of 3: with several people someone blinks in almost every single frame.
+  async function capture() {
+    if (!video.videoWidth || capturing) return;
+    capturing = true;
+    const n = S.mode === 'group' ? 3 : 1;
+    const shots = [];
+    for (let i = 0; i < n; i++) {
+      const sh = await grabFrame();
+      if (sh) shots.push(sh);
+      if (i < n - 1) await new Promise(r => setTimeout(r, 350));
+    }
+    capturing = false;
+    if (!shots.length) return;
+    for (const old of S.lastShots) URL.revokeObjectURL(old.url);
+    S.lastShots = shots; S.lastShot = shots[shots.length - 1];
+    $('thumb').style.backgroundImage = `url(${S.lastShot.url})`;
+    $('previewImg').src = S.lastShot.url;
+    $('previewInfo').hidden = shots.length < 2;
+    $('previewInfo').textContent = `${shots.length} tấm liên tiếp, "Lưu ảnh" sẽ lưu cả ${shots.length} để chọn tấm không ai nháy mắt`;
+    $('preview').hidden = false;
+    S.allPassSince = 0;
   }
   async function savePhoto() {
-    if (!S.lastShot) return;
-    const file = new File([S.lastShot.blob], `chup-chuan-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    if (!S.lastShots.length) return;
+    const stamp = Date.now();
+    const files = S.lastShots.map((sh, i) => new File([sh.blob], `chup-chuan-${stamp}-${i + 1}.jpg`, { type: 'image/jpeg' }));
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file] });
+      if (navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({ files });
         toast('Đã mở bảng chia sẻ, chọn "Lưu ảnh"');
         return;
       }
     } catch (e) { if (e && e.name === 'AbortError') return; }
-    const a = document.createElement('a'); a.href = S.lastShot.url; a.download = file.name; a.target = '_blank';
-    document.body.appendChild(a); a.click(); a.remove();
+    for (const [i, f] of files.entries()) {
+      const a = document.createElement('a'); a.href = S.lastShots[i].url; a.download = f.name; a.target = '_blank';
+      document.body.appendChild(a); a.click(); a.remove();
+    }
     toast('Ảnh đã mở, nhấn giữ để lưu');
   }
 
@@ -857,6 +929,19 @@
       drawPose(ctx, P.pts, F.x + F.w / 2 - w / 2, F.y + F.h * 0.08, w, h, 0.9);
     }
 
+    // group: every face, plus the safe zone nobody should cross
+    if (S.mode === 'group') {
+      const ok = S.checks.subject === 'pass';
+      ctx.setLineDash([6 * dpr, 6 * dpr]); ctx.lineWidth = 1 * dpr; ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.strokeRect(F.x + F.w * 0.04, F.y + F.h * 0.03, F.w * 0.92, F.h * 0.94);
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2 * dpr; ctx.strokeStyle = ok ? 'rgba(52,211,153,0.9)' : 'rgba(245,185,66,0.9)';
+      for (const f of S.faces) {
+        const x0 = mx(mirror ? f.x1 : f.x0), x1 = mx(mirror ? f.x0 : f.x1);
+        roundRect(ctx, x0, my(f.y0), x1 - x0, f.h * F.h, 8 * dpr); ctx.stroke();
+      }
+    }
+
     // subject box + ideal head zone
     if (S.mode === 'person' || S.mode === 'selfie') {
       const s = S.subject;
@@ -909,8 +994,16 @@
     if (!$('app').hidden && wantFacing !== S.facing) { S.facing = wantFacing; openCamera().catch(showCamError); }
     else S.facing = wantFacing;
     $('poseRail').hidden = !(m === 'person' || m === 'selfie');
+    $('bodyBtn').hidden = m === 'group';
+    $('groupRow').hidden = m !== 'group';
     S.hint = null; S.allPassSince = 0;
   }
+  function setExpected(n) {
+    S.expected = clamp(n, 0, 30);
+    $('cntVal').textContent = S.expected ? String(S.expected) : 'Tự động';
+  }
+  $('cntMinus').addEventListener('click', () => setExpected(S.expected - 1));
+  $('cntPlus').addEventListener('click', () => setExpected(S.expected + 1));
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
     clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2400);
