@@ -1,0 +1,11 @@
+{
+  "appId": "vn.fidey.chupchuan",
+  "appName": "Chụp Chuẩn",
+  "webDir": "www",
+  "backgroundColor": "#0A0C10",
+  "ios": {
+    "contentInset": "never",
+    "allowsLinkPreview": false,
+    "scheme": "Chup Chuan"
+  }
+}

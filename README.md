@@ -2,6 +2,16 @@
 
 Máy ảnh web (PWA) tự hướng dẫn góc chụp: cân máy, góc máy, bố cục, ánh sáng, khung dáng mẫu và tự chụp khi đạt chuẩn. Chạy trực tiếp trong Safari trên iPhone, không cần cài đặt.
 
+**Link:** https://vinhson1987-sys.github.io/chup-chuan/
+
+Nguyên tắc thiết kế:
+
+- **Không cần đọc chữ.** Mọi gợi ý là một hình vẽ lớn kèm số độ. Chữ nhỏ bên dưới chỉ để đọc thêm, tự đổi Việt/Anh theo ngôn ngữ máy.
+- **Không cần chọn gì.** Chế độ tự nhận diện (biểu tượng ngôi sao): 1 mặt → người, 2 mặt trở lên → nhóm, camera trước → selfie, không mặt và máy chúc xuống → đồ ăn, còn lại → phong cảnh. Chạm biểu tượng để khóa chế độ nếu muốn.
+- **Không gửi dữ liệu.** Nhận diện chạy trên máy, không tài khoản, không quảng cáo. Sau lần mở đầu dùng được offline.
+
+Tài liệu: [phân tích đối thủ](docs/phan-tich-doi-thu.md) · [đưa lên App Store / Google Play](docs/len-app-store.md) · [chính sách riêng tư](privacy.html)
+
 ## Chạy trên iPhone
 
 Safari chỉ cho mở camera qua địa chỉ `https://`, nên cần đưa thư mục này lên một máy chủ có HTTPS. Hai cách:
@@ -41,6 +51,8 @@ Mọi ngưỡng trong app lấy từ hướng dẫn nhiếp ảnh đã công b�
 
 ## Cấu trúc
 
-- `index.html` – toàn bộ app (giao diện, cảm biến, nhận diện, luật bố cục)
-- `manifest.json`, `icon.svg` – để thêm vào màn hình chính
+- `index.html` – toàn bộ app (giao diện, biểu tượng, cảm biến, nhận diện, luật bố cục, song ngữ)
+- `sw.js` – service worker: lưu app và mô hình để dùng offline
+- `manifest.json`, `icon*.png`, `icon.svg` – để thêm vào màn hình chính
+- `package.json`, `capacitor.config.json`, `scripts/`, `.github/workflows/ios.yml` – bọc thành app iOS và build trên GitHub Actions
 - Nhận diện mặt và dáng người dùng MediaPipe Tasks Vision (tải từ CDN khi mở app)
